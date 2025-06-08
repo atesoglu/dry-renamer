@@ -6,6 +6,7 @@
         <RootNamespace>dry_rename</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <EnableLongPaths>true</EnableLongPaths>
     </PropertyGroup>
 
 </Project>

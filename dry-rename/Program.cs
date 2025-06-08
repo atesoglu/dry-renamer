@@ -17,71 +17,91 @@ if (!Directory.Exists(targetDirectory))
 }
 
 var files = Directory.GetFiles(targetDirectory);
+var nameCollisionTracker = new Dictionary<string, int>();
 
 foreach (var filePath in files)
 {
     var fileName = Path.GetFileName(filePath);
-    var newFileName = CleanFileName(fileName);
+    var updatedFileName = CleanFileName(fileName);
+    var updatedPath = Path.Combine(targetDirectory, updatedFileName);
 
-    if (fileName != newFileName)
+    if (fileName.Equals(updatedFileName, StringComparison.InvariantCultureIgnoreCase))
     {
-        var newPath = Path.Combine(targetDirectory, newFileName);
+        // No rename needed
+        continue;
+    }
 
-        if (isDryRun)
+    if (isDryRun)
+    {
+        Console.WriteLine($"[DRY RUN] Would rename: {fileName} -> {updatedFileName}");
+    }
+    else
+    {
+        try
         {
-            Console.WriteLine($"[DRY RUN] Would rename: {fileName} -> {newFileName}");
-        }
-        else
-        {
-            Console.WriteLine($"Renaming: {fileName} -> {newFileName}");
-            try
+            var finalFileName = updatedFileName;
+            var finalPath = updatedPath;
+
+            while (File.Exists(finalPath))
             {
-                if (File.Exists(newPath))
+                // Track the number of duplicates seen for this base file
+                if (!nameCollisionTracker.TryAdd(updatedFileName, 1))
                 {
-                    File.Delete(newPath);
+                    nameCollisionTracker[updatedFileName]++;
                 }
 
-                File.Move(filePath, newPath);
+                var count = nameCollisionTracker[updatedFileName];
+                var nameWithoutExt = Path.GetFileNameWithoutExtension(updatedFileName);
+                var ext = Path.GetExtension(updatedFileName);
+
+                finalFileName = $"DUP-{count}_{nameWithoutExt}{ext}";
+                finalPath = Path.Combine(targetDirectory, finalFileName);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Error renaming '{fileName}': {ex.Message}");
-            }
+
+            File.Move(filePath, finalPath);
+
+            Console.WriteLine($"✅ Renaming: {fileName} -> {finalFileName}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error renaming '{fileName}': {ex.Message}");
         }
     }
 }
 
+return;
+
 string CleanFileName(string fileName)
 {
     var extension = Path.GetExtension(fileName);
-    var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+    var filename = Path.GetFileNameWithoutExtension(fileName);
 
     // Remove 'sanet.st' and similar patterns
-    nameWithoutExtension = DomainNameOrSimilarPatternsRegex().Replace(nameWithoutExtension, "");
+    filename = DomainNameOrSimilarPatternsRegex().Replace(filename, "");
 
     // Replace multiple underscores with a space
-    nameWithoutExtension = MultipleUnderscoresWithASpaceRegex().Replace(nameWithoutExtension, " ");
+    filename = MultipleUnderscoresWithASpaceRegex().Replace(filename, " ");
 
     // Trim whitespace
-    nameWithoutExtension = nameWithoutExtension.Trim();
+    filename = filename.Trim();
 
     // Clean ending
-    nameWithoutExtension = CleanEndingRegex().Replace(nameWithoutExtension, "");
+    filename = CleanStartAndEndRegex().Replace(filename, "");
 
     // Convert to Title Case
-    nameWithoutExtension = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(nameWithoutExtension.ToLower());
+    filename = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(filename.ToLower());
 
-    return nameWithoutExtension + extension;
+    return filename + extension;
 }
 
 internal partial class Program
 {
     [GeneratedRegex(@"_+")]
     private static partial Regex MultipleUnderscoresWithASpaceRegex();
-    
-    [GeneratedRegex(@"(?i)(sanet\.st|[\s_]*sanet[\s_]*\.?st)", RegexOptions.IgnoreCase, "en-NL")]
+
+    [GeneratedRegex(@"(?i)(sanet\.(st|cd|me)|[\s_]*sanet[\s_]*\.?(st|cd|me))", RegexOptions.IgnoreCase, "en-NL")]
     private static partial Regex DomainNameOrSimilarPatternsRegex();
-    
-    [GeneratedRegex("^[@#$%^&*.-]+|[@#$%^&*.-]+$")]
-    private static partial Regex CleanEndingRegex();
+
+    [GeneratedRegex(@"^[@#$%^&*.\-]+|[@#$%^&*.\-]+$", RegexOptions.None, "en-NL")]
+    private static partial Regex CleanStartAndEndRegex();
 }
